@@ -1,2 +1,2 @@
 #Data Engineering Project Spotify
-##Credits:https://getsongbpm.com for the Data!
+##Credits: https://getsongbpm.com for the BPM-Data!
