@@ -35,42 +35,16 @@ services:
       timeout: 5s
       retries: 30
     restart: unless-stopped
-
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: spotifydb
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg:/var/lib/postgresql/data
-      - ./grundidee/db/init:/docker-entrypoint-initdb.d
-
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d spotifydb"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-    restart: unless-stopped
-
-  adminer:
-    image: adminer:4
-    ports:
-      - "8080:8080"       
-    depends_on:
-      db:
-       condition: service_healthy
-    restart: unless-stopped
-
+  
   producer:
-    build: ./producer
+    build: ./kafka
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
       TOPIC: spotify-tracks
-      SPOTIFY_TOKEN: ${SPOTIFY_TOKEN}
-      ARTIST_ID: 3TVXtAsR1Inumwj472S9r4
+      MARKET: AT
+      POLL_INTERVAL_SECONDS: 300
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
     depends_on:
       kafka:
         condition: service_healthy
@@ -134,6 +108,34 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: spotifydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg:/var/lib/postgresql/data
+      - ./grundidee/db/init:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d spotifydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:4
+    ports:
+      - "8080:8080"       
+    depends_on:
+      db:
+       condition: service_healthy
     restart: unless-stopped
 
   streamlit:
