@@ -1,0 +1,6 @@
+spotipy==2.23.0
+kafka-python==2.0.2
+pyspark==3.5.1
+psycopg2-binary==2.9.9
+streamlit==1.36.0
+pandas==2.2.2
