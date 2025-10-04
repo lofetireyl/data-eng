@@ -11,7 +11,9 @@ export MARKETS=<Länder> # Bsp.: AT,DE,CH für DACH
 # Starten der Conntainer
 
 ## Zuerst Kafka, Zoekeeper und PostgreSQL starten
-`ocker compose up -d kafka zoekeeper postgresql
+```
+docker compose up -d kafka zoekeeper postgresql
+```
 
 Nach dem Starten kann man sich mit 
 
