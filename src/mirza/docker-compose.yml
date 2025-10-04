@@ -25,3 +25,46 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"  # convenient for dev
 
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_DB: spotify
+      POSTGRES_USER: spotify
+      POSTGRES_PASSWORD: spotify
+    ports:
+      - "5432:5432"          # optional; exposes DB to host tools like psql/pgAdmin
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+
+  spark:
+    image: spark:3.5.1-python3
+    container_name: spark
+    user: root
+    depends_on: [kafka, postgres]
+    working_dir: /app
+    volumes:
+      - ./spark:/app
+      - spark_checkpoints:/checkpoints
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      PG_URL: jdbc:postgresql://postgres:5432/spotify
+      PG_HOST: postgres
+      PG_DB: spotify
+      PG_USER: spotify
+      PG_PASSWORD: spotify
+      CHECKPOINT_DIR: /checkpoints
+    command: [
+      "/bin/bash","-lc",
+      "pip install --no-cache-dir psycopg2-binary==2.9.9 && \
+       /opt/spark/bin/spark-submit \
+         --master local[*] \
+         --conf spark.sql.session.timeZone=UTC \
+         --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.7.4 \
+         /app/job.py"
+    ]
+
+volumes:
+  pg_data:
+  spark_checkpoints:
