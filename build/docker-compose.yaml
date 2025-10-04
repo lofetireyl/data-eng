@@ -76,16 +76,61 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  spark:
-    build: ./spark-job
+  spark-master:
+    image: bitnami/spark:3.5
     environment:
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: 7077
+      SPARK_MASTER_WEBUI_PORT: 8080
+      SPARK_NO_DAEMONIZE: "yes"
+    ports:
+      - "7077:7077"   # RPC
+      - "8080:8080"   # UI
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  spark-worker-1:
+    image: bitnami/spark:3.5
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_CORES: 2
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_NO_DAEMONIZE: "yes"
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    restart: unless-stopped
+
+  spark-jobs:
+    build: ./spark
+    environment:
+      # Cluster
+      SPARK_MASTER_URL: spark://spark-master:7077
+
+      # ---- Bronze (Kafka -> Parquet)
       KAFKA_BOOTSTRAP: kafka:9092
-      TOPIC: spotify-tracks
+      KAFKA_TOPIC: spotify-tracks
+      BRONZE_PATH: /data/bronze
+      BRONZE_CHECKPOINT: /data/checkpoints/bronze
+
+      # ---- Silver (optional)
+      RUN_SILVER: "false"
+      SILVER_PATH: /data/silver
+      SILVER_CHECKPOINT: /data/checkpoints/silver
+
       DB_URL: jdbc:postgresql://db:5432/spotifydb
       DB_USER: user
       DB_PASS: password
+    volumes:
+      - sparkdata:/data
     depends_on:
       kafka:
+        condition: service_healthy
+      spark-master:
         condition: service_healthy
       db:
         condition: service_healthy
