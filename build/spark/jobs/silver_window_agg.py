@@ -47,19 +47,16 @@ def main():
         src.withWatermark("ingest_ts", "10 minutes")
            .groupBy(
                F.window("ingest_ts", "5 minutes"),
-               F.col("market")
-           )
+               F.col("market"))
            .agg(
                F.countDistinct("track_id").alias("distinct_tracks"),
-               F.avg("track_popularity").alias("avg_popularity")
-           )
+               F.avg("track_popularity").alias("avg_popularity"))
            .select(
                F.col("market"),
                F.col("window.start").alias("window_start"),
                F.col("window.end").alias("window_end"),
                "distinct_tracks",
-               F.round("avg_popularity", 2).alias("avg_popularity")
-           )
+               F.round("avg_popularity", 2).alias("avg_popularity"))
     )
 
     # Output als Parquet (Silver), zusätzlich nach market partitionieren

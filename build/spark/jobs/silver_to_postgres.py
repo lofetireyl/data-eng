@@ -7,7 +7,7 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--silver_root", required=True)
     p.add_argument("--checkpoint", required=True)
-    p.add_argument("--db_url", required=True)   # jdbc:postgresql://db:5432/spotifydb
+    p.add_argument("--db_url", required=True)
     p.add_argument("--db_user", required=True)
     p.add_argument("--db_pass", required=True)
     return p.parse_args()
@@ -74,7 +74,7 @@ def main():
         T.StructField("label", T.StringType()),
         T.StructField("total_tracks", T.IntegerType()),
         T.StructField("market", T.StringType()),
-        T.StructField("artists", T.StringType()),         # JSON text
+        T.StructField("artists", T.StringType()),
         T.StructField("fetched_at", T.TimestampType()),
         T.StructField("ingested_at", T.TimestampType()),
     ])

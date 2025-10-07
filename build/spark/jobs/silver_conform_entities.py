@@ -6,7 +6,7 @@ BRONZE_SCHEMA = T.StructType([
     T.StructField("ingest_ts", T.TimestampType()),
     T.StructField("album_id", T.StringType()),
     T.StructField("album_name", T.StringType()),
-    T.StructField("album_artists", T.StringType()),   # comma-separated names
+    T.StructField("album_artists", T.StringType()),
     T.StructField("album_total_tracks", T.IntegerType()),
     T.StructField("album_release_date", T.StringType()),
     T.StructField("album_release_date_precision", T.StringType()),
