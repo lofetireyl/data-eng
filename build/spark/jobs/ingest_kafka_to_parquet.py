@@ -1,5 +1,6 @@
 import argparse
 from pyspark.sql import SparkSession, functions as F, types as T
+import os
 
 SCHEMA = T.StructType([
     T.StructField("market", T.StringType()),
@@ -40,7 +41,7 @@ def main():
         .format("kafka")
         .option("kafka.bootstrap.servers", args.kafka_bootstrap)
         .option("subscribe", args.kafka_topic)
-        .option("startingOffsets", "latest")   # für Tests ggf. "earliest"
+        .option("startingOffsets", os.environ.get("KAFKA_STARTING_OFFSETS","latest"))
         .load()
     )
 
