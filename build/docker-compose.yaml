@@ -42,7 +42,7 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
       TOPIC: spotify-tracks
       MARKET: AT
-      POLL_INTERVAL_SECONDS: 300
+      POLL_INTERVAL_SECONDS: 3600
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
     depends_on:
@@ -116,12 +116,12 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: spotifydb
+      TZ: Europe/Vienna
     ports:
       - "5432:5432"
     volumes:
       - pg:/var/lib/postgresql/data
-      - ./grundidee/db/init:/docker-entrypoint-initdb.d
-
+      - ./db/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d spotifydb"]
       interval: 5s
@@ -136,33 +136,6 @@ services:
     depends_on:
       db:
        condition: service_healthy
-    restart: unless-stopped
-
-  streamlit:
-    build: ./streamlit
-    environment:
-      DB_HOST: db
-      DB_NAME: spotifydb
-      DB_USER: user
-      DB_PASS: password
-    ports:
-      - "8501:8501"
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
-  jupyter:
-    image: quay.io/jupyter/scipy-notebook:2025-03-14
-    volumes:
-      - ./notebooks:/home/jovyan/work
-    environment:
-      JUPYTER_TOKEN: dev
-    ports:
-      - "8888:8888"
-    depends_on:
-      db:
-        condition: service_healthy
     restart: unless-stopped
 
 volumes:
