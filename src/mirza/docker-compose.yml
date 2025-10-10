@@ -38,6 +38,26 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
 
+  producer:
+    build: ./producer
+    container_name: spotify-producer
+    depends_on: [kafka]              # ensures the container starts after kafka (not a readiness check)
+    environment:
+      # Kafka (internal listener for containers)
+      KAFKA_BOOTSTRAP: kafka:29092
+
+      # Spotify creds — supply via .env or CI secrets
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
+
+      # Your knobs (override as you like)
+      MARKETS: AT,DE,CH
+      LIMIT_ALBUMS: "50"
+      POLL_SEC: "1800"
+      FETCH_ARTISTS: "1"
+
+    restart: unless-stopped
+
   spark:
     image: spark:3.5.1-python3
     container_name: spark

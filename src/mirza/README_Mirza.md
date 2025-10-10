@@ -115,4 +115,23 @@ und
  2iQTfdkR1rEOBr5p7tp7SO | Back to the Boots                  | AT     | 2025-10-04 13:43:49+00
  4a6NzYL1YHRUgx9e3YZI6I | The Life of a Showgirl             | AT     | 2025-10-04 13:43:49+00
 (10 rows)
-``
+```
+
+### Starten der gesamten Umgebung
+
+```
+docker compose up
+```
+
+> Eventuell ist das Builden des Kafka Producer Containers, also der Script was new releases zieht, notwendig
+
+```
+❯ docker compose up -d --build producer
+```
+
+Logs beobachten
+
+```
+❯ docker compose logs -f spark\
+❯ docker compose logs -f producer
+```
