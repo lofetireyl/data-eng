@@ -119,6 +119,13 @@ und
 
 ### Starten der gesamten Umgebung
 
+Damit das ganze funktioniert, müssen folgende Variablen in einer Datei .env im gleichen Verzeichnis wie das docker-compose.yml file, geschrieben werden.
+
+```
+SPOTIFY_CLIENT_SECRET=<secret>
+SPOTIFY_CLIENT_ID=<id>
+```
+
 ```
 docker compose up
 ```
