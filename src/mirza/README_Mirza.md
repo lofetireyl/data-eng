@@ -12,7 +12,7 @@ export MARKETS=<Länder> # Bsp.: AT,DE,CH für DACH
 
 ## Zuerst Kafka, Zoekeeper und PostgreSQL starten
 ```
-docker compose up -d kafka zoekeeper postgresql
+docker compose up -d kafka zookeeper postgres
 ```
 
 Nach dem Starten kann man sich mit 
@@ -52,6 +52,19 @@ docker exec -it "$KAFKA_CID" bash -lc '
 '
 ```
 
+## Checken ob die Topics erstellt wurden
+
+```
+❯ docker exec -it $KAFKA_CID bash -lc 'kafka-topics --bootstrap-server kafka:29092 --list'
+```
+
+## Check ob Messages am Kafka Broker sind
+
+```
+❯ docker exec -it $KAFKA_CID bash -lc \
+  'kafka-console-consumer --bootstrap-server kafka:29092 --topic spotify.new_releases.album --from-beginning --max-messages 3'
+```
+
 ## Starten des Kafka Brokers von der Konsole aus
 ```
 python producer/kafka_producer_new_releases.py
@@ -70,7 +83,7 @@ Mit
 
 ```
 ❯ docker compose logs -f spark
-````
+```
 
 kann man sich die Logs vom Spark Container anschauen.
 

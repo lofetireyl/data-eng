@@ -44,6 +44,9 @@ services:
     user: root
     depends_on: [kafka, postgres]
     working_dir: /app
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     volumes:
       - ./spark:/app
       - spark_checkpoints:/checkpoints
