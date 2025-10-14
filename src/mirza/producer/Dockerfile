@@ -13,6 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # copy your producer code
 COPY kafka_producer_new_releases.py /app/producer.py
 
+# COPY wait-for-kafka.sh /app/wait-for-kafka.sh
+# RUN chmod +x /app/wait-for-kafka.sh
+
 # if you use the wait-for-kafka entrypoint
 # COPY entrypoint.sh /app/entrypoint.sh
 # RUN chmod +x /app/entrypoint.sh

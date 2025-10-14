@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS spotify_track (
 
 -- Track metadata
 CREATE TABLE IF NOT EXISTS spotify_track_meta (
-  track_id TEXT PRIMARY KEY REFERENCES spotify_track(track_id),
+  track_id TEXT PRIMARY KEY,
   album_id TEXT,
   primary_artist_id TEXT,
   popularity INT,
