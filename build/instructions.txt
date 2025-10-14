@@ -1,0 +1,13 @@
+!!VORSICHT!! CLEANING:
+docker compose down
+docker builder prune -a
+docker system prune -a --volumes
+
+BUILD ORDER:
+docker compose up -d --force-recreate --no-deps zookeeper kafka db adminer
+docker compose up -d --force-recreate --no-deps producer
+docker compose logs -f producer
+docker compose up -d --force-recreate --no-deps spark
+docker compose logs -f spark
+docker compose stop producer
+docker compose up -d producer

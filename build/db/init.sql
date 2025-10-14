@@ -1,3 +1,6 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- Albums
 CREATE TABLE IF NOT EXISTS spotify_album (
   album_id TEXT PRIMARY KEY,
@@ -28,7 +31,7 @@ CREATE TABLE IF NOT EXISTS spotify_track (
 
 -- Track metadata
 CREATE TABLE IF NOT EXISTS spotify_track_meta (
-  track_id TEXT PRIMARY KEY REFERENCES spotify_track(track_id),
+  track_id TEXT PRIMARY KEY,
   album_id TEXT,
   primary_artist_id TEXT,
   popularity INT,
@@ -46,3 +49,8 @@ CREATE TABLE IF NOT EXISTS spotify_artist_meta (
   popularity INT,
   ingested_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Optional indexes for analytics
+CREATE INDEX IF NOT EXISTS idx_album_release_date ON spotify_album (release_date);
+CREATE INDEX IF NOT EXISTS idx_track_meta_popularity ON spotify_track_meta (popularity);
+
