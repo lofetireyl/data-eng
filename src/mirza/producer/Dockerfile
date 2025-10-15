@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # copy your producer code
-COPY kafka_producer_new_releases.py /app/producer.py
+COPY kafka_producer_new_releases_20251014.py /app/producer.py
 
 # COPY wait-for-kafka.sh /app/wait-for-kafka.sh
 # RUN chmod +x /app/wait-for-kafka.sh
