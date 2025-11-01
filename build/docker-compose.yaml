@@ -89,6 +89,19 @@ services:
          --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.7.4 \
          /app/job.py"
     ]
+  
+  streamlit:
+    build: ./streamlit
+    container_name: streamlit
+    depends_on: [db, kafka] 
+    ports:
+      - "8501:8501"
+    environment:
+      DEFAULT_XLSX: /data/new_releases_2025-10-07.xlsx
+    volumes:
+      - ./streamlit/app_streamlit.py:/app/app_streamlit.py:ro
+      - ./data:/data:ro
+    restart: unless-stopped
 
 volumes:
   pg_data:
