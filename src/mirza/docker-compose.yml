@@ -113,6 +113,15 @@ services:
 
     restart: unless-stopped
 
+  adminer:
+    image: adminer:4
+    networks: [stack]          # <— add this
+    depends_on: [postgres]     # <— optional but helpful
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+
   spark:
     image: spark:3.5.1-python3
     container_name: spark
@@ -155,6 +164,25 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  streamlit:
+    build: ./streamlit
+    container_name: streamlit
+    depends_on:
+      postgres:
+        condition: service_started
+    networks: [stack]
+    ports:
+      - "8501:8501"
+    environment:
+      PG_HOST: postgres          # <— service name on the same network
+      PG_PORT: "5432"
+      PG_DB: spotify
+      PG_USER: spotify
+      PG_PASSWORD: spotify
+    volumes:
+      - ./streamlit/app_streamlit.py:/app/app_streamlit.py:ro
+    restart: unless-stopped      
 
 volumes:
   kafka_data:
