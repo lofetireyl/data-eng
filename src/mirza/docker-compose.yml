@@ -1,17 +1,32 @@
 version: "3.9"
+
+networks:
+  stack:
+
 services:
   zookeeper:
+    networks: [stack]
     image: confluentinc/cp-zookeeper:7.6.1
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     depends_on: [zookeeper]
+    networks: [stack]
     ports:
       - "9092:9092"   # host -> broker (for your Python script)
       - "29092:29092" # internal broker listener (containers)
+    restart: unless-stopped
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -24,10 +39,43 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"  # convenient for dev
+      
+      # **** MEMORY: keep heap well under container memory ****
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx1g"
+
+      # **** RETENTION: keep disk/memory pressure low in dev ****
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_RETENTION_BYTES: 268435456    # 256 MiB per topic-partition
+      KAFKA_LOG_SEGMENT_BYTES: 134217728      # 128 MiB segments (rotate earlier)
+      KAFKA_NUM_PARTITIONS: 1                 # default for new topics
+
+      # Fewer background cleaners (saves RAM a bit)
+      KAFKA_LOG_CLEANER_THREADS: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-init
+    networks: [stack]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+    volumes:
+      - ./scripts/create-topics.sh:/app/create-topics.sh:ro
+    entrypoint: ["/bin/bash","-lc","/app/create-topics.sh"]
+    restart: "no"
 
   postgres:
     image: postgres:16
     container_name: postgres
+    networks: [stack]
     environment:
       POSTGRES_DB: spotify
       POSTGRES_USER: spotify
@@ -41,7 +89,13 @@ services:
   producer:
     build: ./producer
     container_name: spotify-producer
-    depends_on: [kafka]              # ensures the container starts after kafka (not a readiness check)
+    networks: [stack]
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    depends_on: 
+      kafka:             # ensures the container starts after kafka (not a readiness check)
+        condition: service_healthy
     environment:
       # Kafka (internal listener for containers)
       KAFKA_BOOTSTRAP: kafka:29092
@@ -51,9 +105,10 @@ services:
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
 
       # Your knobs (override as you like)
-      MARKETS: AT,DE,CH
-      LIMIT_ALBUMS: "50"
-      POLL_SEC: "1800"
+      # MARKETS: AT,DE,CH
+      MARKETS: AT
+      # LIMIT_ALBUMS: "100"
+      POLL_SEC: "60"
       FETCH_ARTISTS: "1"
 
     restart: unless-stopped
@@ -64,12 +119,14 @@ services:
     user: root
     depends_on: [kafka, postgres]
     working_dir: /app
+    networks: [stack]
     dns:
       - 1.1.1.1
       - 8.8.8.8
     volumes:
       - ./spark:/app
       - spark_checkpoints:/checkpoints
+    restart: unless-stopped
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       PG_URL: jdbc:postgresql://postgres:5432/spotify
@@ -78,16 +135,28 @@ services:
       PG_USER: spotify
       PG_PASSWORD: spotify
       CHECKPOINT_DIR: /checkpoints
+      SPARK_DRIVER_MEMORY: 6g          # <— bump heap
     command: [
       "/bin/bash","-lc",
       "pip install --no-cache-dir psycopg2-binary==2.9.9 && \
        /opt/spark/bin/spark-submit \
          --master local[*] \
+         --driver-memory ${SPARK_DRIVER_MEMORY:-6g} \
          --conf spark.sql.session.timeZone=UTC \
+         --conf spark.sql.shuffle.partitions=4 \
+         --conf spark.sql.streaming.stateStore.maintenanceInterval=60s \
+         --conf spark.sql.streaming.stateStore.providerClass=org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider \
          --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.7.4 \
          /app/job.py"
     ]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'spark-submit|job.py' >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
+  kafka_data:
   pg_data:
   spark_checkpoints:
