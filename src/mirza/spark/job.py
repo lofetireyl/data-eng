@@ -1,5 +1,7 @@
 import os
-from typing import Dict
+import math
+from typing import Dict, Tuple
+
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
     col,
@@ -9,11 +11,20 @@ from pyspark.sql.functions import (
     expr,
     explode,
     to_json,
-    lit,
 )
-from pyspark.sql.types import *
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    StringType,
+    IntegerType,
+    BooleanType,
+    ArrayType,
+    MapType,
+)
 
-# --------- Config from env ----------
+# ---------------------------------------------------------------------
+# ENV / CONFIG
+# ---------------------------------------------------------------------
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:29092")
 CHECKPOINT_DIR = os.getenv("CHECKPOINT_DIR", "/checkpoints")
 
@@ -25,7 +36,13 @@ PG_PORT = int(os.getenv("PG_PORT", "5432"))
 PG_URL = os.getenv("PG_URL", "jdbc:postgresql://postgres:5432/spotify")
 PG_DRIVER = "org.postgresql.Driver"
 
-# --------- Schemas ----------
+# 👇 important: we can now control this via env
+# e.g. docker-compose: environment: STARTING_OFFSETS=earliest
+STARTING_OFFSETS = os.getenv("STARTING_OFFSETS", "earliest")
+
+# ---------------------------------------------------------------------
+# SCHEMAS
+# ---------------------------------------------------------------------
 album_schema = StructType(
     [
         StructField("album_id", StringType()),
@@ -85,8 +102,7 @@ artist_schema = StructType(
     ]
 )
 
-# --------- GetSongBPM schema (artist_bpm_meta) ----------
-# Wir halten das Event generisch: items als Map/String-Pairs, damit Rohdaten robust bleiben.
+# GetSongBPM event
 getsong_event_schema = StructType(
     [
         StructField("source", StringType()),
@@ -101,12 +117,13 @@ getsong_event_schema = StructType(
         ),
         StructField("queried_at", StringType()),
         StructField("count", IntegerType()),
-        # items kann variable Felder enthalten -> als Map(String,String) für robustes Parsen
         StructField("items", ArrayType(MapType(StringType(), StringType(), True), True)),
     ]
 )
 
-# --------- Spark session ----------
+# ---------------------------------------------------------------------
+# Spark
+# ---------------------------------------------------------------------
 spark = (
     SparkSession.builder.appName("spotify-kafka-to-postgres")
     .config("spark.sql.shuffle.partitions", "4")
@@ -114,12 +131,13 @@ spark = (
 )
 spark.sparkContext.setLogLevel("WARN")
 
+
 def read_kafka(topic: str) -> DataFrame:
     return (
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
         .option("subscribe", topic)
-        .option("startingOffsets", "latest")
+        .option("startingOffsets", STARTING_OFFSETS)  # 👈 now configurable
         .option("failOnDataLoss", "false")
         .load()
         .select(
@@ -129,12 +147,18 @@ def read_kafka(topic: str) -> DataFrame:
         )
     )
 
+
 def with_parsed(df: DataFrame, schema: StructType) -> DataFrame:
     parsed = df.select("kafka_key", "kafka_ts", from_json(col("json"), schema).alias("obj"))
+    # if schema does NOT match, obj will be null → we can filter those out
+    parsed = parsed.where(col("obj").isNotNull())
     parsed = parsed.select("kafka_key", "kafka_ts", "obj.*")
     return parsed.withColumn("ingested_at", current_timestamp())
 
-# --------- Streams (bestehende Topics) ----------
+
+# ---------------------------------------------------------------------
+# Streams
+# ---------------------------------------------------------------------
 albums = (
     with_parsed(read_kafka("spotify.new_releases.album"), album_schema)
     .withColumn("fetched_at_ts", to_timestamp(col("fetched_at")))
@@ -153,10 +177,9 @@ artists = with_parsed(read_kafka("spotify.artist_meta"), artist_schema).dropDupl
     ["artist_id"]
 )
 
-# --------- GetSongBPM Stream ----------
+# ----- GetSongBPM -----
 bpm_events = with_parsed(read_kafka("spotify.artist_bpm_meta"), getsong_event_schema)
 
-# Eine Zeile pro Event für artist_bpm_queries
 bpm_queries_df = bpm_events.select(
     col("kafka_key").alias("event_key"),
     col("artist.id").alias("artist_id"),
@@ -166,7 +189,6 @@ bpm_queries_df = bpm_events.select(
     col("ingested_at"),
 )
 
-# Explode items -> artist_bpm_items (mit Rohdaten als JSON-String)
 bpm_items_df = (
     bpm_events.withColumn("item", explode(col("items")))
     .select(
@@ -187,25 +209,27 @@ bpm_items_df = (
     )
 )
 
-# --------- JDBC Upserts (bestehende Logik) ----------
+# ---------------------------------------------------------------------
+# JDBC / psycopg2
+# ---------------------------------------------------------------------
 import psycopg2
 from psycopg2.extras import execute_values
 
-PG_HOST = os.getenv("PG_HOST", "postgres")
-PG_DB = os.getenv("PG_DB", "spotify")
-PG_USER = os.getenv("PG_USER", "spotify")
-PG_PASSWORD = os.getenv("PG_PASSWORD", "spotify")
-PG_PORT = int(os.getenv("PG_PORT", "5432"))
 
 def foreach_upsert(table: str, key_cols: list):
-    def _fn(batch_df, batch_id: int):
-        if batch_df.rdd.isEmpty():
+    def _fn(batch_df: DataFrame, batch_id: int):
+        # tiny debug log to see if we got a batch at all
+        cnt = batch_df.count()
+        print(f"[{table}] batch_id={batch_id} rows={cnt}")
+        if cnt == 0:
             return
 
         df = batch_df
         if table == "spotify_album":
-            df = df.withColumn("artists", expr("to_json(artists)")).drop("fetched_at").withColumnRenamed(
-                "fetched_at_ts", "fetched_at"
+            df = (
+                df.withColumn("artists", expr("to_json(artists)"))
+                .drop("fetched_at")
+                .withColumnRenamed("fetched_at_ts", "fetched_at")
             )
             cols = [
                 "album_id",
@@ -252,7 +276,7 @@ def foreach_upsert(table: str, key_cols: list):
         df = df.select(*cols)
         tmp = f"{table}_stg_{batch_id}"
 
-        # 1) stage to JDBC
+        # write to staging
         (
             df.write.format("jdbc")
             .option("url", PG_URL)
@@ -264,11 +288,9 @@ def foreach_upsert(table: str, key_cols: list):
             .save()
         )
 
-        # 2) merge via psycopg2
         key_set = set(key_cols)
         set_clause = ", ".join([f"{c}=EXCLUDED.{c}" for c in cols if c not in key_set])
 
-        # Cast JSON text -> JSONB when merging
         select_cols = []
         for c in cols:
             if table == "spotify_album" and c == "artists":
@@ -298,19 +320,48 @@ def foreach_upsert(table: str, key_cols: list):
 
     return _fn
 
-# --------- Neue Writer für GetSongBPM ---------
+
+# ---------------------------------------------------------------------
+# helpers for BPM (pandas → python types)
+# ---------------------------------------------------------------------
+def _to_py_datetime(v):
+    if v is None:
+        return None
+    if hasattr(v, "to_pydatetime"):
+        return v.to_pydatetime()
+    return v
+
+
+def _to_py_float(v):
+    if v is None:
+        return None
+    try:
+        if isinstance(v, float):
+            if math.isnan(v):
+                return None
+            return float(v)
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def foreach_bpm_queries(batch_df: DataFrame, batch_id: int):
-    if batch_df.rdd.isEmpty():
+    cnt = batch_df.count()
+    print(f"[artist_bpm_queries] batch_id={batch_id} rows={cnt}")
+    if cnt == 0:
         return
 
     rows = [
-        tuple(r)
+        (
+            r["artist_id"],
+            r["artist_name"],
+            r["queried_at"],
+            r["item_count"],
+        )
         for r in batch_df.select(
             "artist_id", "artist_name", "queried_at", "item_count"
         ).collect()
     ]
-    if not rows:
-        return
 
     conn = psycopg2.connect(
         host=PG_HOST, dbname=PG_DB, user=PG_USER, password=PG_PASSWORD, port=PG_PORT
@@ -325,8 +376,11 @@ def foreach_bpm_queries(batch_df: DataFrame, batch_id: int):
         execute_values(cur, sql, rows, page_size=1000)
     conn.close()
 
+
 def foreach_bpm_items(batch_df: DataFrame, batch_id: int):
-    if batch_df.rdd.isEmpty():
+    cnt = batch_df.count()
+    print(f"[artist_bpm_items] batch_id={batch_id} rows={cnt}")
+    if cnt == 0:
         return
 
     pdf = batch_df.select(
@@ -352,10 +406,13 @@ def foreach_bpm_items(batch_df: DataFrame, batch_id: int):
     )
     conn.autocommit = True
     with conn.cursor() as cur:
-        # Mapping (artist_id, artist_name, queried_at) -> query_id
         keys = pdf[["artist_id", "artist_name", "queried_at"]].drop_duplicates()
-        mapping = {}
-        for aid, aname, qts in keys.to_records(index=False):
+        mapping: Dict[Tuple[str, str, object], int] = {}
+
+        for _, k in keys.iterrows():
+            aid = k["artist_id"]
+            aname = k["artist_name"]
+            qts = _to_py_datetime(k["queried_at"])
             cur.execute(
                 """
                 SELECT query_id FROM artist_bpm_queries
@@ -372,11 +429,15 @@ def foreach_bpm_items(batch_df: DataFrame, batch_id: int):
                 mapping[(aid, aname, qts)] = row[0]
 
         insert_rows = []
+
         for _, r in pdf.iterrows():
-            key = (r["artist_id"], r["artist_name"], r["queried_at"])
+            aid = r["artist_id"]
+            aname = r["artist_name"]
+            qts = _to_py_datetime(r["queried_at"])
+            key = (aid, aname, qts)
             qid = mapping.get(key)
+
             if not qid:
-                # Fallback: Query-Row erzeugen, falls noch nicht vorhanden
                 cur.execute(
                     """
                     INSERT INTO artist_bpm_queries (artist_id, artist_name, queried_at, item_count)
@@ -384,7 +445,7 @@ def foreach_bpm_items(batch_df: DataFrame, batch_id: int):
                     ON CONFLICT DO NOTHING
                     RETURNING query_id
                     """,
-                    (r["artist_id"], r["artist_name"], r["queried_at"], 0),
+                    (aid, aname, qts, 0),
                 )
                 ret = cur.fetchone()
                 if ret:
@@ -400,16 +461,12 @@ def foreach_bpm_items(batch_df: DataFrame, batch_id: int):
                         ORDER BY query_id DESC
                         LIMIT 1
                         """,
-                        (
-                            r["artist_id"],
-                            r["artist_id"],
-                            r["artist_id"],
-                            r["artist_name"],
-                            r["queried_at"],
-                        ),
+                        (aid, aid, aid, aname, qts),
                     )
                     row2 = cur.fetchone()
                     qid = row2[0] if row2 else None
+                    if qid:
+                        mapping[key] = qid
 
             if not qid:
                 continue
@@ -420,12 +477,12 @@ def foreach_bpm_items(batch_df: DataFrame, batch_id: int):
                     (r["item_id"] if r["item_id"] is not None else ""),
                     r["title"],
                     r["item_artist_name"],
-                    float(r["bpm"]) if r["bpm"] is not None else None,
+                    _to_py_float(r["bpm"]),
                     r["musical_key"],
                     r["camelot"],
-                    float(r["energy"]) if r["energy"] is not None else None,
-                    float(r["danceability"]) if r["danceability"] is not None else None,
-                    r["raw_item_json"],
+                    _to_py_float(r["energy"]),
+                    _to_py_float(r["danceability"]),
+                    str(r["raw_item_json"]) if r["raw_item_json"] is not None else None,
                 )
             )
 
@@ -446,50 +503,54 @@ def foreach_bpm_items(batch_df: DataFrame, batch_id: int):
               raw = EXCLUDED.raw::jsonb;
             """
             execute_values(cur, sql, insert_rows, page_size=1000)
+
     conn.close()
 
-# --------- Start streaming sinks ----------
+
+# ---------------------------------------------------------------------
+# START STREAMS
+# ---------------------------------------------------------------------
 q1 = (
     albums.writeStream.outputMode("update")
     .foreachBatch(foreach_upsert("spotify_album", ["album_id"]))
-    .option("checkpointLocation", f"{CHECKPOINT_DIR}/albums")
+    .option("checkpointLocation", f"{CHECKPOINT_DIR}/albums_v2")
     .start()
 )
 
 q2 = (
     tracks.writeStream.outputMode("update")
     .foreachBatch(foreach_upsert("spotify_track", ["track_id"]))
-    .option("checkpointLocation", f"{CHECKPOINT_DIR}/tracks")
+    .option("checkpointLocation", f"{CHECKPOINT_DIR}/tracks_v2")
     .start()
 )
 
 q3 = (
     tmeta.writeStream.outputMode("update")
     .foreachBatch(foreach_upsert("spotify_track_meta", ["track_id"]))
-    .option("checkpointLocation", f"{CHECKPOINT_DIR}/tmeta")
+    .option("checkpointLocation", f"{CHECKPOINT_DIR}/tmeta_v2")
     .start()
 )
 
 q4 = (
     artists.writeStream.outputMode("update")
     .foreachBatch(foreach_upsert("spotify_artist_meta", ["artist_id"]))
-    .option("checkpointLocation", f"{CHECKPOINT_DIR}/artists")
+    .option("checkpointLocation", f"{CHECKPOINT_DIR}/artists_v2")
     .start()
 )
 
-# Neue Sinks
 q5 = (
     bpm_queries_df.writeStream.outputMode("update")
     .foreachBatch(foreach_bpm_queries)
-    .option("checkpointLocation", f"{CHECKPOINT_DIR}/getsongbpm_queries")
+    .option("checkpointLocation", f"{CHECKPOINT_DIR}/getsongbpm_queries_v2")
     .start()
 )
 
 q6 = (
     bpm_items_df.writeStream.outputMode("update")
     .foreachBatch(foreach_bpm_items)
-    .option("checkpointLocation", f"{CHECKPOINT_DIR}/getsongbpm_items")
+    .option("checkpointLocation", f"{CHECKPOINT_DIR}/getsongbpm_items_v2")
     .start()
 )
 
 spark.streams.awaitAnyTermination()
+

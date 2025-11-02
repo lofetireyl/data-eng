@@ -20,11 +20,12 @@ create() {
     --replication-factor 1 || true
 }
 
-# Only these four:
+# Only these five:
 create spotify.new_releases.album
 create spotify.new_releases.track
 create spotify.track_meta
 create spotify.artist_meta
+create spotify.artist_bpm_meta
 
 echo "Topics present:"
 kafka-topics --bootstrap-server "$BROKER" --list
