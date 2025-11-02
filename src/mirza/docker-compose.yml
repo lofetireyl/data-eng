@@ -121,6 +121,25 @@ services:
       - "8081:8080"
     restart: unless-stopped
 
+# -----GETSONGBPM - Worker
+  getsongbpm-worker:
+    build:
+      context: ./getsongbpm_worker   # Pfad zu Ordner mit Dockerfile/requirements.py/Script
+    networks: [stack]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:29092
+      - IN_TOPIC=spotify.artist_meta
+      - OUT_TOPIC=spotify.artist_bpm_meta
+      - GROUP_ID=getsongbpm-workers
+      - GETSONG_BASE_URL=https://api.getsong.co
+      - GETSONG_API_KEY=${GETSONG_API_KEY}
+      - LIMIT_PER_CALL=100
+      - SLEEP_BETWEEN_PREFIX=0.25
+      - DEDUP_TTL_SEC=7200
+    restart: unless-stopped
 
   spark:
     image: spark:3.5.1-python3
