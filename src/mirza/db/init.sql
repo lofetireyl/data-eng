@@ -51,29 +51,6 @@ CREATE TABLE IF NOT EXISTS spotify_artist_meta (
 );
 
 -- Pro API-Abfrage (Event aus spotify.artist_bpm_meta)
-CREATE TABLE IF NOT EXISTS artist_bpm_queries (
-  query_id BIGSERIAL PRIMARY KEY,
-  artist_id VARCHAR(64) NULL,
-  artist_name VARCHAR(512) NOT NULL,
-  queried_at TIMESTAMP NOT NULL,
-  item_count INT NOT NULL,
-  received_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
---GetSongBPM Songs pro Abfrage
-  CREATE TABLE IF NOT EXISTS artist_bpm_items (
-    query_id BIGINT NOT NULL REFERENCES artist_bpm_queries(query_id) ON DELETE CASCADE,
-    item_id TEXT NOT NULL,
-    title TEXT,
-    artist_name TEXT,
-    bpm NUMERIC(6,2) NULL,
-    musical_key TEXT NULL,
-    camelot TEXT NULL,
-    energy NUMERIC(6,3) NULL,
-    danceability NUMERIC(6,3) NULL,
-    raw JSONB NOT NULL,
-    PRIMARY KEY (query_id, item_id)
-  );
 
 -- Optional indexes for analytics
 CREATE INDEX IF NOT EXISTS idx_album_release_date ON spotify_album (release_date);
