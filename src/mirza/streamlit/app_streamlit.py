@@ -6,7 +6,6 @@ import psycopg2
 import plotly.express as px
 from contextlib import contextmanager
 
-# ---------- DB CONFIG ----------
 PG_HOST = os.getenv("PG_HOST", "postgres")
 PG_PORT = int(os.getenv("PG_PORT", "5432"))
 PG_DB   = os.getenv("PG_DB", "spotify")
@@ -15,7 +14,6 @@ PG_PASS = os.getenv("PG_PASSWORD", "spotify")
 
 st.set_page_config(page_title="Spotify Metrics", layout="wide")
 
-# ---------- CONNECTION ----------
 @st.cache_resource(show_spinner=False)
 def get_conn():
     return psycopg2.connect(
@@ -31,7 +29,6 @@ def cursor():
     finally:
         cur.close()
 
-# ---------- GENERIC HELPERS ----------
 def df_from_query(sql, params=None):
     with cursor() as cur:
         cur.execute(sql, params or [])
@@ -46,7 +43,6 @@ def ms_to_mmss(ms):
     m, s = divmod(s, 60)
     return f"{m:02d}:{s:02d}"
 
-# ---------- QUERIES FOR METRICS ----------
 SQL_AVG_DURATION = """
     SELECT AVG(duration_ms)::float AS avg_duration_ms
     FROM spotify_track_meta
@@ -100,16 +96,13 @@ SQL_DURATION_VS_POPULARITY = """
     WHERE duration_ms IS NOT NULL AND popularity IS NOT NULL
 """
 
-# ---------- UI ----------
 st.title("Spotify Database")
 
 st.sidebar.markdown("### Connection")
 st.sidebar.text(f"{PG_USER}@{PG_HOST}:{PG_PORT}/{PG_DB}")
 
-# =================== METRICS PAGE ===================
 st.header("Key Metrics")
 
-# --- KPI row ---
 c1, c2, c3 = st.columns(3)
 try:
     avg_ms = df_from_query(SQL_AVG_DURATION).iloc[0]["avg_duration_ms"] or 0.0
@@ -138,7 +131,6 @@ except Exception as e:
 
 st.markdown("---")
 
-# --- Top/Bottom 10 artists by popularity ---
 colA, colB = st.columns(2)
 try:
     top10 = df_from_query(SQL_TOP_ARTISTS)
@@ -166,7 +158,6 @@ except Exception as e:
 
 st.markdown("---")
 
-# --- All artists popularity plot ---
 try:
     df_all = df_from_query(SQL_ALL_ARTISTS)
     st.subheader("📈 Artists by Popularity")
@@ -182,7 +173,6 @@ except Exception as e:
 
 st.markdown("---")
 
-# --- Tracks per album distribution ---
 try:
     dist = df_from_query(SQL_TRACKS_PER_ALBUM_DIST)
     st.subheader("🎚️ Distribution: Tracks per Album")
@@ -194,11 +184,9 @@ try:
 except Exception as e:
     st.error(f"Tracks/album distribution failed: {e}")
 
-# --- Popularity vs Track Length (scatter) ---
 try:
     df_scatter = df_from_query(SQL_DURATION_VS_POPULARITY)
     if not df_scatter.empty:
-        # minutes for x-axis; keep ms for hover
         df_scatter["duration_min"] = df_scatter["duration_ms"] / 60000.0
 
         st.markdown("---")
@@ -208,7 +196,7 @@ try:
             df_scatter,
             x="duration_min",
             y="popularity",
-            render_mode="webgl",     # faster with many points
+            render_mode="webgl",    
             opacity=0.35,
             labels={"duration_min": "Duration (min)", "popularity": "Popularity"}
         )
