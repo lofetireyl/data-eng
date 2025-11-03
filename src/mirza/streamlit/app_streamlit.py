@@ -94,6 +94,11 @@ SQL_TRACKS_PER_ALBUM_DIST = """
     GROUP BY total_tracks
     ORDER BY total_tracks
 """
+SQL_DURATION_VS_POPULARITY = """
+    SELECT duration_ms, popularity
+    FROM spotify_track_meta
+    WHERE duration_ms IS NOT NULL AND popularity IS NOT NULL
+"""
 
 # ---------- UI ----------
 st.title("Spotify Database")
@@ -164,10 +169,8 @@ st.markdown("---")
 # --- All artists popularity plot ---
 try:
     df_all = df_from_query(SQL_ALL_ARTISTS)
-    st.subheader("📈 All Artists by Popularity")
-    default_max = min(len(df_all), 300) if len(df_all) > 0 else 50
-    max_bars = st.slider("Max artists to display (sorted by popularity)", 50, 2000, default_max, step=50)
-    df_show = df_all.head(max_bars)
+    st.subheader("📈 Artists by Popularity")
+    df_show = df_all.head(300)  # show top 300 artists
     fig3 = px.bar(df_show.sort_values("popularity", ascending=False),
                   x="artist_name", y="popularity", title=None)
     fig3.update_layout(xaxis_title=None, yaxis_title="Popularity", xaxis_tickangle=-60, margin=dict(t=10))
@@ -190,3 +193,32 @@ try:
         st.dataframe(dist, use_container_width=True, hide_index=True)
 except Exception as e:
     st.error(f"Tracks/album distribution failed: {e}")
+
+# --- Popularity vs Track Length (scatter) ---
+try:
+    df_scatter = df_from_query(SQL_DURATION_VS_POPULARITY)
+    if not df_scatter.empty:
+        # minutes for x-axis; keep ms for hover
+        df_scatter["duration_min"] = df_scatter["duration_ms"] / 60000.0
+
+        st.markdown("---")
+        st.subheader("🎯 Popularity vs Track Length")
+        st.caption("Each point is a track; x = length (minutes), y = Spotify popularity (0–100).")
+
+        fig5 = px.scatter(
+            df_scatter,
+            x="duration_min",
+            y="popularity",
+            render_mode="webgl",     # faster with many points
+            opacity=0.35,
+            labels={"duration_min": "Duration (min)", "popularity": "Popularity"}
+        )
+        st.plotly_chart(fig5, use_container_width=True)
+
+        with st.expander("Show data (first 1,000 rows)"):
+            st.dataframe(df_scatter.head(1000), use_container_width=True, hide_index=True)
+    else:
+        st.info("No data available for duration vs popularity.")
+except Exception as e:
+    st.error(f"Duration vs popularity plot failed: {e}")
+
