@@ -36,8 +36,6 @@ PG_PORT = int(os.getenv("PG_PORT", "5432"))
 PG_URL = os.getenv("PG_URL", "jdbc:postgresql://postgres:5432/spotify")
 PG_DRIVER = "org.postgresql.Driver"
 
-# 👇 important: we can now control this via env
-# e.g. docker-compose: environment: STARTING_OFFSETS=earliest
 STARTING_OFFSETS = os.getenv("STARTING_OFFSETS", "earliest")
 
 # ---------------------------------------------------------------------
