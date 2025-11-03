@@ -203,7 +203,6 @@ try:
 
         st.markdown("---")
         st.subheader("🎯 Popularity vs Track Length")
-        st.caption("Each point is a track; x = length (minutes), y = Spotify popularity (0–100).")
 
         fig5 = px.scatter(
             df_scatter,
