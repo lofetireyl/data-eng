@@ -135,7 +135,7 @@ def read_kafka(topic: str) -> DataFrame:
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
         .option("subscribe", topic)
-        .option("startingOffsets", STARTING_OFFSETS)  # 👈 now configurable
+        .option("startingOffsets", STARTING_OFFSETS)
         .option("failOnDataLoss", "false")
         .load()
         .select(
@@ -148,7 +148,7 @@ def read_kafka(topic: str) -> DataFrame:
 
 def with_parsed(df: DataFrame, schema: StructType) -> DataFrame:
     parsed = df.select("kafka_key", "kafka_ts", from_json(col("json"), schema).alias("obj"))
-    # if schema does NOT match, obj will be null → we can filter those out
+    # if schema does NOT match, obj will be null 
     parsed = parsed.where(col("obj").isNotNull())
     parsed = parsed.select("kafka_key", "kafka_ts", "obj.*")
     return parsed.withColumn("ingested_at", current_timestamp())
@@ -320,7 +320,7 @@ def foreach_upsert(table: str, key_cols: list):
 
 
 # ---------------------------------------------------------------------
-# helpers for BPM (pandas → python types)
+# helpers for BPM 
 # ---------------------------------------------------------------------
 def _to_py_datetime(v):
     if v is None:
