@@ -96,6 +96,37 @@ SQL_DURATION_VS_POPULARITY = """
     WHERE duration_ms IS NOT NULL AND popularity IS NOT NULL
 """
 
+SQL_SONGBPM_BASE = """
+    SELECT
+      query_id,
+      spotify_artist_id,
+      spotify_artist_name,
+      item_id,
+      title,
+      tempo,              -- numeric aus View (= BPM)
+      musical_key,
+      camelot,
+      danceability,       -- 0-100
+      acousticness        -- 0-100
+    FROM v_artist_bpm_items_flat
+"""
+
+SQL_SONGBPM_DISTINCT_ARTISTS = """
+    SELECT DISTINCT spotify_artist_name
+    FROM v_artist_bpm_items_flat
+    WHERE spotify_artist_name IS NOT NULL
+    ORDER BY 1
+"""
+
+SQL_SONGBPM_DISTINCT_ITEM_ARTISTS = """
+    SELECT DISTINCT item_artist_name
+    FROM v_artist_bpm_items_flat
+    WHERE item_artist_name IS NOT NULL
+    ORDER BY 1
+"""
+
+
+
 st.title("Spotify Database")
 
 st.sidebar.markdown("### Connection")
@@ -209,3 +240,106 @@ try:
 except Exception as e:
     st.error(f"Duration vs popularity plot failed: {e}")
 
+  # SONGBPM-Page
+    st.header("SongBPM – Analyse und Übersicht")
+
+    try:
+        all_artists = df_from_query(SQL_SONGBPM_DISTINCT_ARTISTS)["spotify_artist_name"].tolist()
+    except Exception as e:
+        all_artists = []
+        st.error(f"Konnte Artists nicht laden: {e}")
+
+    with st.sidebar:
+        st.markdown("### Filter – SongBPM")
+        sel_artists = st.multiselect("Artist(en) filtern", options=all_artists, default=[])
+
+    try:
+        base_sql = SQL_SONGBPM_BASE
+        params = []
+        if sel_artists:
+            ph = ", ".join(["%s"] * len(sel_artists))
+            base_sql += f"\nWHERE spotify_artist_name IN ({ph})"
+            params = sel_artists
+        base_sql += "\nORDER BY spotify_artist_name, title"
+
+        bpm_df = df_from_query(base_sql, params)
+        bpm_df = bpm_df.rename(columns={"tempo": "bpm"})
+    except Exception as e:
+        bpm_df = pd.DataFrame()
+        st.error(f"Konnte SongBPM-Daten nicht laden: {e}")
+
+    if bpm_df.empty:
+        st.info("Keine Daten gefunden (Filter anpassen?).")
+        st.stop()
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.metric("Songs", f"{len(bpm_df):,}")
+    with k2:
+        avg_bpm = bpm_df["bpm"].astype(float).mean()
+        st.metric("Ø BPM", f"{avg_bpm:.1f}" if pd.notnull(avg_bpm) else "n/a")
+    with k3:
+        avg_ac = bpm_df["acousticness"].astype(float).mean()
+        st.metric("Ø Acousticness", f"{avg_ac:.1f}" if pd.notnull(avg_ac) else "n/a")
+    with k4:
+        avg_da = bpm_df["danceability"].astype(float).mean()
+        st.metric("Ø Danceability", f"{avg_da:.1f}" if pd.notnull(avg_da) else "n/a")
+
+    st.markdown("---")
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.subheader("Verteilung der BPM")
+        try:
+            fig_hist = px.histogram(
+                bpm_df,
+                x="bpm",
+                nbins=30,
+                title=None,
+                labels={"bpm": "BPM"},
+                opacity=0.9,
+            )
+            fig_hist.update_layout(yaxis_title="Songs", margin=dict(t=10))
+            st.plotly_chart(fig_hist, use_container_width=True)
+        except Exception as e:
+            st.error(f"Histogramm fehlgeschlagen: {e}")
+
+    with c2:
+        st.subheader("BPM vs. Danceability")
+        try:
+            df_scatter = bpm_df.copy()
+            df_scatter["danceability"] = pd.to_numeric(df_scatter["danceability"], errors="coerce")
+            fig_sc = px.scatter(
+                df_scatter,
+                x="bpm",
+                y="danceability",
+                color="musical_key",
+                hover_data=["spotify_artist_name", "title", "camelot"],
+                labels={"bpm": "BPM", "danceability": "Danceability (0–100)", "musical_key": "Key"},
+                title=None,
+            )
+            fig_sc.update_layout(margin=dict(t=10))
+            st.plotly_chart(fig_sc, use_container_width=True)
+        except Exception as e:
+            st.error(f"Scatter fehlgeschlagen: {e}")
+
+    st.markdown("---")
+
+    st.subheader("Detail-Daten")
+    with st.expander("Tabelle anzeigen"):
+        st.dataframe(
+            bpm_df[[
+                "spotify_artist_name", "title", "bpm", "musical_key", "camelot",
+                "danceability", "acousticness"
+            ]].reset_index(drop=True),
+            use_container_width=True,
+            hide_index=True,
+        )
+    csv = bpm_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "CSV herunterladen",
+        data=csv,
+        file_name="songbpm_export.csv",
+        mime="text/csv",
+    )

@@ -16,17 +16,16 @@ OUT_TOPIC = os.getenv("OUT_TOPIC", "spotify.artist_bpm_meta")
 GROUP_ID = os.getenv("GROUP_ID", "getsongbpm-workers")
 
 GETSONG_BASE_URL = os.getenv("GETSONG_BASE_URL", "https://api.getsong.co")
-GETSONG_API_KEY = os.getenv("GETSONG_API_KEY")  # set via .env
+GETSONG_API_KEY = os.getenv("GETSONG_API_KEY") 
 REQ_TIMEOUT = float(os.getenv("REQ_TIMEOUT", "10"))
-LIMIT_PER_CALL = int(os.getenv("LIMIT_PER_CALL", "100"))
-SLEEP_BETWEEN_PREFIX = float(os.getenv("SLEEP_BETWEEN_PREFIX", "0.25"))
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", "5"))
-DEDUP_TTL_SEC = int(os.getenv("DEDUP_TTL_SEC", "7200")) 
+LIMIT_PER_CALL = int(os.getenv("LIMIT_PER_CALL", "50"))
+SLEEP_BETWEEN_PREFIX = float(os.getenv("SLEEP_BETWEEN_PREFIX", "0.5"))
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
+DEDUP_TTL_SEC = int(os.getenv("DEDUP_TTL_SEC", "30")) 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("getsongbpm-worker")
 
-# ------------ kafka ------------
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BOOTSTRAP,
     acks="all",
