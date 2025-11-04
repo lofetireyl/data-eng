@@ -47,35 +47,6 @@ LIMIT_ALBUMS = int(os.getenv("LIMIT_ALBUMS", "50"))
 POLL_SEC = int(os.getenv("POLL_SEC", "1800"))
 FETCH_ARTISTS = os.getenv("FETCH_ARTISTS", "1") not in ("0", "false", "False")
 
-# Troubleshooeting
-
-# bootstrap = os.getenv("KAFKA_BOOTSTRAP", "kafka:29092")
-# 
-# def connect():
-#     return KafkaProducer(
-#         bootstrap_servers=bootstrap,
-#         acks='all',
-#         linger_ms=20,
-#         retries=1000000,
-#         retry_backoff_ms=200,
-#         request_timeout_ms=30000,
-#         max_block_ms=60000,
-#         max_in_flight_requests_per_connection=1,
-#         # key_serializer=lambda k: k.encode(),
-#         # value_serializer=lambda v: json.dumps(v).encode(),
-#         api_version_auto_timeout_ms=10000,
-#     )
-# 
-# for i in range(60):
-#     try:
-#         producer = connect()
-#         break
-#     except Exception as e:
-#         print(f"Kafka connect failed (try {i+1}/60): {e}")
-#         time.sleep(2)
-# else:
-#     raise RuntimeError("Cannot connect to Kafka")
-
 # ---------- kafka ----------
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BOOTSTRAP,
