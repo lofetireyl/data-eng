@@ -109,7 +109,7 @@ services:
 
   getsongbpm-worker:
     build:
-      context: ./getsongbpm_worker   # Pfad zu Ordner mit Dockerfile/requirements.py/Script
+      context: ./getsongbpm_worker
     networks: [stack]
     depends_on:
       kafka:

@@ -36,8 +36,6 @@ KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
 MARKETS = [x.strip().upper() for x in os.getenv("MARKETS", "AT").split(",") if x.strip()]
 POLL_SEC = int(os.getenv("POLL_SEC", "1800"))
 FETCH_ARTISTS = os.getenv("FETCH_ARTISTS", "1") not in ("0", "false", "False")
-
-# Maximum albums to fetch from /browse/new-releases per market (Spotify caps at 50/page)
 MAX_NEW_RELEASES = 100
 
 # ---------- kafka ----------
@@ -234,7 +232,6 @@ def main():
                         all_tids.append(t["track_id"])
                         tot_tracks += 1
 
-                # Track metadata (popularity/explicit/duration/markets_count)
                 tot_tmeta += publish_track_meta(all_tids, seen_tracks)
                 tot_art += publish_artists(list(set(all_aids)), seen_artists)
 
