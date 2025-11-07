@@ -1,5 +1,3 @@
-#!/Users/moerz/Documents/study/fhtw_mai/s1/demai/group_project_spotify/.venv/bin/python
-
 """
 Playlist-free producer for "New Releases Radar" that avoids deprecated endpoints.
 It polls:
@@ -12,15 +10,8 @@ Publishes to Kafka topics:
   - spotify.new_releases.album
   - spotify.new_releases.track
   - spotify.track_meta
-  - spotify.artist_meta   (optional, toggle via FETCH_ARTISTS)
+  - spotify.artist_meta 
 
-Env:
-  SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
-  KAFKA_BOOTSTRAP=localhost:9092
-  MARKETS=AT,DE,US
-  LIMIT_ALBUMS=50
-  POLL_SEC=1800
-  FETCH_ARTISTS=1
 """
 
 import os, time, json, signal, logging
@@ -43,9 +34,11 @@ if not (SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET):
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
 MARKETS = [x.strip().upper() for x in os.getenv("MARKETS", "AT").split(",") if x.strip()]
-LIMIT_ALBUMS = int(os.getenv("LIMIT_ALBUMS", "50"))
 POLL_SEC = int(os.getenv("POLL_SEC", "1800"))
 FETCH_ARTISTS = os.getenv("FETCH_ARTISTS", "1") not in ("0", "false", "False")
+
+# Maximum albums to fetch from /browse/new-releases per market (Spotify caps at 50/page)
+MAX_NEW_RELEASES = 100
 
 # ---------- kafka ----------
 producer = KafkaProducer(
@@ -100,28 +93,41 @@ def safe_call(fn, *args, **kwargs):
     return False, None
 
 # ---------- fetch ----------
-def fetch_new_releases(country: str, limit: int) -> List[Dict[str, Any]]:
-    ok, page = safe_call(sp.new_releases, country=country, limit=limit)
-    if not ok or not page: return []
-    items = page.get("albums", {}).get("items", []) or []
+def fetch_new_releases(country: str, max_total: int = MAX_NEW_RELEASES) -> List[Dict[str, Any]]:
+    """Fetch up to max_total albums by paging /browse/new-releases (50 per page)."""
+    items: List[Dict[str, Any]] = []
+    offset = 0
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    out = []
-    for a in items:
-        if not a or not a.get("id"): continue
-        out.append({
-            "album_id": a["id"],
-            "album_name": a.get("name"),
-            "release_date": a.get("release_date"),
-            "release_date_precision": a.get("release_date_precision"),
-            "artists": [{"id": ar.get("id"), "name": ar.get("name")} 
-                        for ar in (a.get("artists") or []) if ar.get("id")],
-            "market": country,
-            "fetched_at": fetched_at,
-            # label & total_tracks are often useful for weekly stats:
-            "label": a.get("label"),
-            "total_tracks": a.get("total_tracks"),
-        })
-    return out
+
+    while len(items) < max_total:
+        page_limit = min(50, max_total - len(items))
+        ok, page = safe_call(sp.new_releases, country=country, limit=page_limit, offset=offset)
+        if not ok or not page:
+            break
+        albums = page.get("albums", {})
+        page_items = albums.get("items", []) or []
+        for a in page_items:
+            if not a or not a.get("id"):
+                continue
+            items.append({
+                "album_id": a["id"],
+                "album_name": a.get("name"),
+                "release_date": a.get("release_date"),
+                "release_date_precision": a.get("release_date_precision"),
+                "artists": [{"id": ar.get("id"), "name": ar.get("name")} 
+                            for ar in (a.get("artists") or []) if ar.get("id")],
+                "market": country,
+                "fetched_at": fetched_at,
+                "label": a.get("label"),
+                "total_tracks": a.get("total_tracks"),
+            })
+        # stop if no next page
+        if not albums.get("next"):
+            break
+        offset += page_limit
+
+    return items
+
 
 def fetch_album_tracks(album_id: str, market: str) -> List[Dict[str, Any]]:
     tracks = []
@@ -138,11 +144,11 @@ def fetch_album_tracks(album_id: str, market: str) -> List[Dict[str, Any]]:
                 "track_number": t.get("track_number"),
                 "duration_ms": t.get("duration_ms"),
                 "explicit": t.get("explicit"),
-                # available_markets omitted here (big); we capture count later via /tracks
             })
         if not page.get("next"): break
         offset += 50
     return tracks
+
 
 def publish_track_meta(track_ids: List[str], seen: Set[str]) -> int:
     """Use /v1/tracks?ids=... (max 50) to collect popularity, explicit, markets count, etc."""
@@ -162,13 +168,13 @@ def publish_track_meta(track_ids: List[str], seen: Set[str]) -> int:
                 "album_id": (t.get("album") or {}).get("id"),
                 "primary_artist_id": ((t.get("artists") or [{}])[0]).get("id"),
                 "available_markets_count": len(t.get("available_markets") or []),
-                # preview_url is unstable for new apps per 2024 changes; avoid relying on it
             }
             producer.send(TOPIC_TMETA, key=msg["track_id"], value=msg)
             seen.add(msg["track_id"]); published += 1
     if published:
         log.info("Published %d track_meta", published)
     return published
+
 
 def publish_artists(artist_ids: List[str], seen: Set[str]) -> int:
     if not FETCH_ARTISTS: return 0
@@ -193,9 +199,10 @@ def publish_artists(artist_ids: List[str], seen: Set[str]) -> int:
     return published
 
 # ---------- main ----------
+
 def main():
-    log.info("MARKETS=%s LIMIT_ALBUMS=%s POLL_SEC=%s FETCH_ARTISTS=%s",
-             MARKETS, LIMIT_ALBUMS, POLL_SEC, FETCH_ARTISTS)
+    log.info("MARKETS=%s POLL_SEC=%s FETCH_ARTISTS=%s MAX_NEW_RELEASES=%s",
+             MARKETS, POLL_SEC, FETCH_ARTISTS, MAX_NEW_RELEASES)
     seen_tracks: Set[str] = set()
     seen_artists: Set[str] = set()
 
@@ -205,7 +212,7 @@ def main():
 
         for market in MARKETS:
             try:
-                albums = fetch_new_releases(market, LIMIT_ALBUMS)
+                albums = fetch_new_releases(market)
                 if not albums:
                     log.info("No albums for %s", market); continue
 
@@ -229,7 +236,6 @@ def main():
 
                 # Track metadata (popularity/explicit/duration/markets_count)
                 tot_tmeta += publish_track_meta(all_tids, seen_tracks)
-                # Optional artist metadata (genres, popularity)
                 tot_art += publish_artists(list(set(all_aids)), seen_artists)
 
             except Exception as e:
@@ -247,4 +253,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
