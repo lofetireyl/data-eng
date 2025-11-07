@@ -148,11 +148,45 @@ def read_kafka(topic: str) -> DataFrame:
 
 def with_parsed(df: DataFrame, schema: StructType) -> DataFrame:
     parsed = df.select("kafka_key", "kafka_ts", from_json(col("json"), schema).alias("obj"))
-    # if schema does NOT match, obj will be null 
     parsed = parsed.where(col("obj").isNotNull())
     parsed = parsed.select("kafka_key", "kafka_ts", "obj.*")
     return parsed.withColumn("ingested_at", current_timestamp())
 
+#View
+
+def ensure_views():
+    import psycopg2
+    sql = """
+    CREATE OR REPLACE VIEW v_artist_bpm_items_flat AS
+    SELECT
+      i.query_id,
+      q.artist_id  AS spotify_artist_id,
+      q.artist_name AS spotify_artist_name,
+      i.item_id,
+      i.title,
+      i.bpm,
+      (i.raw->>'tempo')::numeric      AS tempo,
+      i.raw->>'key_of'                AS musical_key,
+      i.raw->>'open_key'              AS camelot,
+      (i.raw->>'danceability')::int   AS danceability,
+      (i.raw->>'acousticness')::int   AS acousticness,
+      ((i.raw->>'artist')::jsonb)->>'name' AS item_artist_name
+    FROM artist_bpm_items i
+    JOIN artist_bpm_queries q USING (query_id);
+    """
+    conn = psycopg2.connect(
+        host=os.getenv("PG_HOST", "postgres"),
+        dbname=os.getenv("PG_DB", "spotify"),
+        user=os.getenv("PG_USER", "spotify"),
+        password=os.getenv("PG_PASSWORD", "spotify"),
+        port=int(os.getenv("PG_PORT", "5432")),
+    )
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(sql)
+    conn.close()
+
+ensure_views()
 
 # ---------------------------------------------------------------------
 # Streams
