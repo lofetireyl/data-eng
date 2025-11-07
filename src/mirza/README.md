@@ -36,3 +36,5 @@ docker compose down
 docker builder prune -a
 docker system prune -a --volumes
   ```
+
+It may be required to stop and restart streamlit if an error occurs in the dashboard, after the whole pipeline has started.
