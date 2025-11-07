@@ -42,6 +42,8 @@ To enrich the dataset, we fetch further information for each album, artist, and 
 - **From artist endpoints:** `popularity`, `genres`  
 - **From track endpoints:** `track_name`, `popularity`, `duration_ms`, `explicit`, etc.
 
+Additionally we take the retrieved artist names and use them to search for song of said artists in the GetSongBPM API endpoint to retrieve older songs for each which can be used to analyze metrics of previous releases.
+
 ---
 
 ### Data Flow

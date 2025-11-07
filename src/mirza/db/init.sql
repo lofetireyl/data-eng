@@ -15,11 +15,11 @@ CREATE TABLE IF NOT EXISTS spotify_album (
   ingested_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Tracks (no FK; streaming-friendly)
+-- Tracks
 CREATE TABLE IF NOT EXISTS spotify_track (
   track_id TEXT PRIMARY KEY,
   track_name TEXT,
-  album_id TEXT,                 -- keep, but no FK
+  album_id TEXT,             
   disc_number INT,
   track_number INT,
   duration_ms INT,
@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS spotify_artist_meta (
   ingested_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- BPM tables
 CREATE TABLE IF NOT EXISTS artist_bpm_queries (
   query_id BIGSERIAL PRIMARY KEY,
   artist_id VARCHAR(64) NULL,
@@ -59,19 +60,19 @@ CREATE TABLE IF NOT EXISTS artist_bpm_queries (
   received_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-  CREATE TABLE IF NOT EXISTS artist_bpm_items (
-    query_id BIGINT NOT NULL REFERENCES artist_bpm_queries(query_id) ON DELETE CASCADE,
-    item_id TEXT NOT NULL,
-    title TEXT,
-    artist_name TEXT,
-    bpm NUMERIC(6,2) NULL,
-    musical_key TEXT NULL,
-    camelot TEXT NULL,
-    energy NUMERIC(6,3) NULL,
-    danceability NUMERIC(6,3) NULL,
-    raw JSONB NOT NULL,
-    PRIMARY KEY (query_id, item_id)
-  );
+CREATE TABLE IF NOT EXISTS artist_bpm_items (
+  query_id BIGINT NOT NULL REFERENCES artist_bpm_queries(query_id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL,
+  title TEXT,
+  artist_name TEXT,
+  bpm NUMERIC(6,2) NULL,
+  musical_key TEXT NULL,
+  camelot TEXT NULL,
+  energy NUMERIC(6,3) NULL,
+  danceability NUMERIC(6,3) NULL,
+  raw JSONB NOT NULL,
+  PRIMARY KEY (query_id, item_id)
+);
 
 -- Optional indexes for analytics
 CREATE INDEX IF NOT EXISTS idx_album_release_date ON spotify_album (release_date);
